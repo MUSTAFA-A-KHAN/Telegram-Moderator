@@ -61,13 +61,9 @@ func HandleCommand(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbotapi.Mes
 
 		var tags []string
 		for _, member := range members {
-			if member.Username != "" {
-				tags = append(tags, "@"+utils.EscapeMarkdownV2(member.Username))
-			} else {
-				firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
-				mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
-				tags = append(tags, mention)
-			}
+			firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
+			mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
+			tags = append(tags, mention)
 		}
 
 		batchSize := 5
@@ -397,13 +393,9 @@ func HandleDynamicTeamTag(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbot
 	var tags []string
 	for _, memberID := range team.Members {
 		if member, exists := groupMembers[memberID]; exists {
-			if member.Username != "" {
-				tags = append(tags, "@"+utils.EscapeMarkdownV2(member.Username))
-			} else {
-				firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
-				mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
-				tags = append(tags, mention)
-			}
+			firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
+			mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
+			tags = append(tags, mention)
 		}
 	}
 
