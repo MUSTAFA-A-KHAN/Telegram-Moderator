@@ -291,9 +291,10 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 			if member, exists := groupMembers[memberID]; exists {
 				var name string
 				if member.Username != "" {
-					name = "@" + utils.EscapeMarkdownV2(member.Username)
+					// Don't prefix with @ to avoid actually tagging them
+					name = fmt.Sprintf("%s \\(%s\\)", utils.EscapeMarkdownV2(member.FirstName), utils.EscapeMarkdownV2(member.Username))
 				} else {
-					name = fmt.Sprintf("[%s](tg://user?id=%d)", utils.EscapeMarkdownV2(member.FirstName), member.ID)
+					name = utils.EscapeMarkdownV2(member.FirstName)
 				}
 				response += fmt.Sprintf("\\- %s\n", name)
 			} else {
