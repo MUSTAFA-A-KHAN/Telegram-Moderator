@@ -15,6 +15,12 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 	text := strings.TrimSpace(query.Query)
 	creatorID := query.From.ID
 
+	useUsername := false
+	if strings.HasSuffix(text, "-u") {
+		useUsername = true
+		text = strings.TrimSpace(strings.TrimSuffix(text, "-u"))
+	}
+
 	// Track the creator just in case
 	creatorUser := models.User{
 		ID:        query.From.ID,
@@ -31,7 +37,7 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 	if text == "" {
 		// Just show their existing teams they created
 		for _, t := range teams {
-			resList := buildSendTagsResult(ds, creatorID, t)
+			resList := buildSendTagsResult(ds, creatorID, t, useUsername)
 			results = append(results, resList...)
 		}
 	} else {
@@ -44,7 +50,7 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 				if strings.ToLower(t.TeamName) == strings.ToLower(teamName) {
 					exactMatchFound = true
 				}
-				resList := buildSendTagsResult(ds, creatorID, t)
+				resList := buildSendTagsResult(ds, creatorID, t, useUsername)
 				results = append(results, resList...)
 			}
 		}
@@ -87,15 +93,19 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 	}
 }
 
-func buildSendTagsResult(ds *db.DataStore, creatorID int64, team models.Team) []interface{} {
+func buildSendTagsResult(ds *db.DataStore, creatorID int64, team models.Team, useUsername bool) []interface{} {
 	groupMembers, _ := ds.GetGroupMembers(creatorID)
 
 	var tags []string
 	for _, memberID := range team.Members {
 		if member, exists := groupMembers[memberID]; exists {
-			firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
-			mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
-			tags = append(tags, mention)
+			if useUsername && member.Username != "" {
+				tags = append(tags, "@"+utils.EscapeMarkdownV2(member.Username))
+			} else {
+				firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
+				mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
+				tags = append(tags, mention)
+			}
 		}
 	}
 

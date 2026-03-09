@@ -59,11 +59,17 @@ func HandleCommand(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbotapi.Mes
 			return
 		}
 
+		useUsername := strings.Contains(message.CommandArguments(), "-u")
+
 		var tags []string
 		for _, member := range members {
-			firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
-			mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
-			tags = append(tags, mention)
+			if useUsername && member.Username != "" {
+				tags = append(tags, "@"+utils.EscapeMarkdownV2(member.Username))
+			} else {
+				firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
+				mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
+				tags = append(tags, mention)
+			}
 		}
 
 		batchSize := 5
@@ -371,6 +377,10 @@ func HandleDynamicTeamTag(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbot
 	}
 
 	teamName := parts[0]
+	useUsername := false
+	if len(parts) > 1 && parts[1] == "-u" {
+		useUsername = true
+	}
 
 	team, err := ds.GetTeam(message.Chat.ID, teamName)
 	if err != nil || team == nil {
@@ -393,9 +403,13 @@ func HandleDynamicTeamTag(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbot
 	var tags []string
 	for _, memberID := range team.Members {
 		if member, exists := groupMembers[memberID]; exists {
-			firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
-			mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
-			tags = append(tags, mention)
+			if useUsername && member.Username != "" {
+				tags = append(tags, "@"+utils.EscapeMarkdownV2(member.Username))
+			} else {
+				firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
+				mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
+				tags = append(tags, mention)
+			}
 		}
 	}
 
