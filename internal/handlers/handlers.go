@@ -53,7 +53,7 @@ func HandleCommand(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbotapi.Mes
 		var tags []string
 		for _, member := range members {
 			if member.Username != "" {
-				tags = append(tags, "@"+member.Username)
+				tags = append(tags, "@"+utils.EscapeMarkdownV2(member.Username))
 			} else {
 				firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
 				mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
@@ -69,10 +69,12 @@ func HandleCommand(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbotapi.Mes
 			}
 			batch := tags[i:end]
 
-			text := "Attention: " + strings.Join(batch, ", ")
+			text := "Attention\\: " + strings.Join(batch, ", ")
 			msg := tgbotapi.NewMessage(message.Chat.ID, text)
 			msg.ParseMode = tgbotapi.ModeMarkdownV2
-			bot.Send(msg)
+			if _, err := bot.Send(msg); err != nil {
+				fmt.Printf("Failed to send tagAll msg: %v\n", err)
+			}
 		}
 
 	case "manage":
@@ -364,7 +366,7 @@ func HandleDynamicTeamTag(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbot
 	for _, memberID := range team.Members {
 		if member, exists := groupMembers[memberID]; exists {
 			if member.Username != "" {
-				tags = append(tags, "@"+member.Username)
+				tags = append(tags, "@"+utils.EscapeMarkdownV2(member.Username))
 			} else {
 				firstNameEscaped := utils.EscapeMarkdownV2(member.FirstName)
 				mention := fmt.Sprintf("[%s](tg://user?id=%d)", firstNameEscaped, member.ID)
@@ -387,9 +389,11 @@ func HandleDynamicTeamTag(bot *tgbotapi.BotAPI, ds *db.DataStore, message *tgbot
 		}
 		batch := tags[i:end]
 
-		text := fmt.Sprintf("Calling team *%s*:\n%s", utils.EscapeMarkdownV2(team.TeamName), strings.Join(batch, ", "))
+		text := fmt.Sprintf("Calling team *%s*\\:\n%s", utils.EscapeMarkdownV2(team.TeamName), strings.Join(batch, ", "))
 		msg := tgbotapi.NewMessage(message.Chat.ID, text)
 		msg.ParseMode = tgbotapi.ModeMarkdownV2
-		bot.Send(msg)
+		if _, err := bot.Send(msg); err != nil {
+			fmt.Printf("Failed to send dynamic tag msg: %v\n", err)
+		}
 	}
 }
