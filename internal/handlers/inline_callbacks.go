@@ -62,7 +62,7 @@ func HandleInlineCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tg
 				team, _ = ds.GetTeam(creatorID, teamName)
 				if team != nil {
 					// Update the original inline message text to show member count
-					text := fmt.Sprintf("Join the *%s* team! \\(%d members\\)", utils.EscapeMarkdownV2(teamName), len(team.Members))
+					text := fmt.Sprintf("Join the *%s* team\\! \\(%d members\\)", utils.EscapeMarkdownV2(teamName), len(team.Members))
 					markup := tgbotapi.NewInlineKeyboardMarkup(
 						tgbotapi.NewInlineKeyboardRow(
 							tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("Join %s (%d)", teamName, len(team.Members)), callbackData),

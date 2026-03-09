@@ -43,7 +43,7 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 			results = append(results, buildSendTagsResult(ds, creatorID, *team))
 		} else {
 			// Not found, allow them to create a shareable Join button
-			createBtn := tgbotapi.NewInlineQueryResultArticle(query.ID, "Create & Share Team: "+teamName, fmt.Sprintf("Join the *%s* team!", utils.EscapeMarkdownV2(teamName)))
+			createBtn := tgbotapi.NewInlineQueryResultArticle(query.ID, "Create & Share Team: "+teamName, fmt.Sprintf("Join the *%s* team\\!", utils.EscapeMarkdownV2(teamName)))
 			createBtn.Description = "Send a button to let people join " + teamName
 
 			// Setup the inline keyboard that will be attached to the message
@@ -53,7 +53,7 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 
 			// Needs parse mode for the text
 			createBtn.InputMessageContent = tgbotapi.InputTextMessageContent{
-				Text:      fmt.Sprintf("Join the *%s* team!", utils.EscapeMarkdownV2(teamName)),
+				Text:      fmt.Sprintf("Join the *%s* team\\!", utils.EscapeMarkdownV2(teamName)),
 				ParseMode: tgbotapi.ModeMarkdownV2,
 			}
 
