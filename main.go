@@ -113,6 +113,10 @@ func main() {
 				}
 
 				handlers.HandleCommand(bot, dataStore, update.Message)
+
+				// Optional: Delete the user's command to reduce spam if we have admin rights
+				delMsg := tgbotapi.NewDeleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+				bot.Send(delMsg)
 				continue
 			}
 
@@ -121,10 +125,16 @@ func main() {
 				// We expect the message text to be the new team name
 				teamName := strings.TrimSpace(update.Message.Text)
 
+				// Optional: Delete the user's reply with the team name to reduce chat spam
+				delMsg := tgbotapi.NewDeleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+				bot.Send(delMsg)
+
 				// Basic validation
 				if len(teamName) < 3 || strings.Contains(teamName, " ") || strings.HasPrefix(teamName, "/") {
 					msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Invalid team name. Must be at least 3 characters, contain no spaces, and not start with '/'. Try again or type /cancel.")
-					bot.Send(msg)
+					if sent, err := bot.Send(msg); err == nil {
+						handlers.DeleteMessageAfter(bot, update.Message.Chat.ID, sent.MessageID, 5)
+					}
 					continue
 				}
 
@@ -132,10 +142,14 @@ func main() {
 				if err != nil {
 					log.Printf("Failed to create team %s: %v", teamName, err)
 					msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Failed to create team. It might already exist.")
-					bot.Send(msg)
+					if sent, err := bot.Send(msg); err == nil {
+						handlers.DeleteMessageAfter(bot, update.Message.Chat.ID, sent.MessageID, 5)
+					}
 				} else {
 					msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Team '"+teamName+"' created successfully!")
-					bot.Send(msg)
+					if sent, err := bot.Send(msg); err == nil {
+						handlers.DeleteMessageAfter(bot, update.Message.Chat.ID, sent.MessageID, 5)
+					}
 				}
 
 				// Clear state

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"telegram-team-bot/internal/db"
@@ -22,6 +23,14 @@ func isAdmin(bot *tgbotapi.BotAPI, chatID int64, userID int64) bool {
 		return false
 	}
 	return member.Status == "creator" || member.Status == "administrator"
+}
+
+// DeleteMessageAfter deletes a message after n seconds
+func DeleteMessageAfter(bot *tgbotapi.BotAPI, chatID int64, messageID int, sec int) {
+	go func() {
+		time.Sleep(time.Duration(sec) * time.Second)
+		bot.Send(tgbotapi.NewDeleteMessage(chatID, messageID))
+	}()
 }
 
 // HandleCommand processes standard bot commands
@@ -127,12 +136,15 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 			ForceReply: true,
 			Selective:  true,
 		}
+		// First delete the original inline keyboard menu to avoid hanging buttons
+		bot.Send(tgbotapi.NewDeleteMessage(chatID, query.Message.MessageID))
 		bot.Send(msg)
 
 	case callbackData == "cmd_delete_team":
 		teams, err := ds.GetTeams(chatID)
 		if err != nil || len(teams) == 0 {
-			bot.Send(tgbotapi.NewMessage(chatID, "No teams found to delete."))
+			msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "No teams found to delete.")
+			bot.Send(msg)
 			return
 		}
 
@@ -142,14 +154,16 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 			keyboard = append(keyboard, tgbotapi.NewInlineKeyboardRow(btn))
 		}
 
-		msg := tgbotapi.NewMessage(chatID, "Select a team to delete:")
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "Select a team to delete:")
+		markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg.ReplyMarkup = &markup
 		bot.Send(msg)
 
 	case callbackData == "cmd_join_team":
 		teams, err := ds.GetTeams(chatID)
 		if err != nil || len(teams) == 0 {
-			bot.Send(tgbotapi.NewMessage(chatID, "No teams available to join."))
+			msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "No teams available to join.")
+			bot.Send(msg)
 			return
 		}
 
@@ -159,14 +173,16 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 			keyboard = append(keyboard, tgbotapi.NewInlineKeyboardRow(btn))
 		}
 
-		msg := tgbotapi.NewMessage(chatID, "Select a team to join:")
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "Select a team to join:")
+		markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg.ReplyMarkup = &markup
 		bot.Send(msg)
 
 	case callbackData == "cmd_leave_team":
 		teams, err := ds.GetTeams(chatID)
 		if err != nil || len(teams) == 0 {
-			bot.Send(tgbotapi.NewMessage(chatID, "No teams available."))
+			msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "No teams available.")
+			bot.Send(msg)
 			return
 		}
 
@@ -186,18 +202,21 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 		}
 
 		if len(keyboard) == 0 {
-			bot.Send(tgbotapi.NewMessage(chatID, "You are not in any teams."))
+			msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "You are not in any teams.")
+			bot.Send(msg)
 			return
 		}
 
-		msg := tgbotapi.NewMessage(chatID, "Select a team to leave:")
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "Select a team to leave:")
+		markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg.ReplyMarkup = &markup
 		bot.Send(msg)
 
 	case callbackData == "cmd_list_teams":
 		teams, err := ds.GetTeams(chatID)
 		if err != nil || len(teams) == 0 {
-			bot.Send(tgbotapi.NewMessage(chatID, "No teams exist yet."))
+			msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "No teams exist yet.")
+			bot.Send(msg)
 			return
 		}
 
@@ -207,36 +226,49 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 			keyboard = append(keyboard, tgbotapi.NewInlineKeyboardRow(btn))
 		}
 
-		msg := tgbotapi.NewMessage(chatID, "Select a team to view its members:")
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, "Select a team to view its members:")
+		markup := tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		msg.ReplyMarkup = &markup
 		bot.Send(msg)
 
 	case strings.HasPrefix(callbackData, "delete_team:"):
 		teamName := strings.TrimPrefix(callbackData, "delete_team:")
 		err := ds.DeleteTeam(chatID, teamName)
+		var text string
 		if err != nil {
-			bot.Send(tgbotapi.NewMessage(chatID, "Failed to delete team."))
+			text = "Failed to delete team."
 		} else {
-			bot.Send(tgbotapi.NewMessage(chatID, "Team "+teamName+" deleted successfully."))
+			text = "Team " + teamName + " deleted successfully."
 		}
+		editMsg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, text)
+		bot.Send(editMsg)
+		DeleteMessageAfter(bot, chatID, query.Message.MessageID, 5)
 
 	case strings.HasPrefix(callbackData, "join_team:"):
 		teamName := strings.TrimPrefix(callbackData, "join_team:")
 		err := ds.AddMemberToTeam(chatID, teamName, userID)
+		var text string
 		if err != nil {
-			bot.Send(tgbotapi.NewMessage(chatID, "Failed to join team. You might already be in it."))
+			text = "Failed to join team. You might already be in it."
 		} else {
-			bot.Send(tgbotapi.NewMessage(chatID, "You have joined "+teamName+"!"))
+			text = "You have joined " + teamName + "!"
 		}
+		editMsg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, text)
+		bot.Send(editMsg)
+		DeleteMessageAfter(bot, chatID, query.Message.MessageID, 5)
 
 	case strings.HasPrefix(callbackData, "leave_team:"):
 		teamName := strings.TrimPrefix(callbackData, "leave_team:")
 		err := ds.RemoveMemberFromTeam(chatID, teamName, userID)
+		var text string
 		if err != nil {
-			bot.Send(tgbotapi.NewMessage(chatID, "Failed to leave team."))
+			text = "Failed to leave team."
 		} else {
-			bot.Send(tgbotapi.NewMessage(chatID, "You have left "+teamName+"."))
+			text = "You have left " + teamName + "."
 		}
+		editMsg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, text)
+		bot.Send(editMsg)
+		DeleteMessageAfter(bot, chatID, query.Message.MessageID, 5)
 
 	case strings.HasPrefix(callbackData, "view_team:"):
 		// Format: view_team:teamName:pageNumber
