@@ -30,8 +30,8 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 		// Just show their existing teams they created
 		teams, _ := ds.GetTeams(creatorID)
 		for _, t := range teams {
-			result := buildSendTagsResult(ds, creatorID, t)
-			results = append(results, result)
+			resList := buildSendTagsResult(ds, creatorID, t)
+			results = append(results, resList...)
 		}
 	} else {
 		// Search for a team or propose to create one
@@ -40,7 +40,8 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 
 		if team != nil {
 			// Found the team, allow them to send the tags
-			results = append(results, buildSendTagsResult(ds, creatorID, *team))
+			resList := buildSendTagsResult(ds, creatorID, *team)
+			results = append(results, resList...)
 		} else {
 			// Not found, allow them to create a shareable Join button
 			createBtn := tgbotapi.NewInlineQueryResultArticle(query.ID, "Create & Share Team: "+teamName, fmt.Sprintf("Join the *%s* team\\!", utils.EscapeMarkdownV2(teamName)))
@@ -73,10 +74,7 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 	}
 }
 
-func buildSendTagsResult(ds *db.DataStore, creatorID int64, team models.Team) tgbotapi.InlineQueryResultArticle {
-	title := "Send tags for " + team.TeamName
-	desc := fmt.Sprintf("%d members", len(team.Members))
-
+func buildSendTagsResult(ds *db.DataStore, creatorID int64, team models.Team) []interface{} {
 	groupMembers, _ := ds.GetGroupMembers(creatorID)
 
 	var tags []string
@@ -88,18 +86,46 @@ func buildSendTagsResult(ds *db.DataStore, creatorID int64, team models.Team) tg
 		}
 	}
 
-	var text string
 	if len(tags) == 0 {
-		text = fmt.Sprintf("The *%s* team is empty.", utils.EscapeMarkdownV2(team.TeamName))
-	} else {
-		text = fmt.Sprintf("Calling team *%s*\\:\n%s", utils.EscapeMarkdownV2(team.TeamName), strings.Join(tags, ", "))
+		title := "Send tags for " + team.TeamName
+		text := fmt.Sprintf("The *%s* team is empty.", utils.EscapeMarkdownV2(team.TeamName))
+		res := tgbotapi.NewInlineQueryResultArticle(team.TeamName+"_empty", title, text)
+		res.Description = "0 members"
+		res.InputMessageContent = tgbotapi.InputTextMessageContent{
+			Text:      text,
+			ParseMode: tgbotapi.ModeMarkdownV2,
+		}
+		return []interface{}{res}
 	}
 
-	res := tgbotapi.NewInlineQueryResultArticle(team.TeamName, title, text)
-	res.Description = desc
-	res.InputMessageContent = tgbotapi.InputTextMessageContent{
-		Text:      text,
-		ParseMode: tgbotapi.ModeMarkdownV2,
+	// Telegram limits mentions to ~5 per message to prevent spam blocking
+	batchSize := 5
+	var results []interface{}
+	partNum := 1
+
+	for i := 0; i < len(tags); i += batchSize {
+		end := i + batchSize
+		if end > len(tags) {
+			end = len(tags)
+		}
+		batch := tags[i:end]
+
+		text := fmt.Sprintf("Calling team *%s*\\:\n%s", utils.EscapeMarkdownV2(team.TeamName), strings.Join(batch, ", "))
+
+		title := fmt.Sprintf("Send tags for %s", team.TeamName)
+		if len(tags) > batchSize {
+			title = fmt.Sprintf("Send tags for %s (Part %d)", team.TeamName, partNum)
+		}
+
+		res := tgbotapi.NewInlineQueryResultArticle(fmt.Sprintf("%s_part%d", team.TeamName, partNum), title, text)
+		res.Description = fmt.Sprintf("Tags %d members", len(batch))
+		res.InputMessageContent = tgbotapi.InputTextMessageContent{
+			Text:      text,
+			ParseMode: tgbotapi.ModeMarkdownV2,
+		}
+		results = append(results, res)
+		partNum++
 	}
-	return res
+
+	return results
 }
