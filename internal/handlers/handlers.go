@@ -118,6 +118,12 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 		stateKey := fmt.Sprintf("%d:%d", chatID, userID)
 		userStates[stateKey] = "WAITING_FOR_TEAM_NAME"
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("@%s, please type the new team name (no spaces, e.g. werewolfTeam):", query.From.UserName))
+		// Use ForceReply to force the user to reply to the bot.
+		// This bypasses Telegram Group Privacy restrictions for plain text messages.
+		msg.ReplyMarkup = tgbotapi.ForceReply{
+			ForceReply: true,
+			Selective:  true,
+		}
 		bot.Send(msg)
 
 	case callbackData == "cmd_delete_team":
