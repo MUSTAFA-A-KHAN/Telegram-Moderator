@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -198,17 +199,15 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 			return
 		}
 
-		var response string
+		var keyboard [][]tgbotapi.InlineKeyboardButton
 		for _, team := range teams {
-			// In MarkdownV2, hyphen, parens, etc. must be escaped
-			response += fmt.Sprintf("\\- *%s* \\(%d members\\)\n", utils.EscapeMarkdownV2(team.TeamName), len(team.Members))
+			btn := tgbotapi.NewInlineKeyboardButtonData(team.TeamName, fmt.Sprintf("view_team:%s:1", team.TeamName))
+			keyboard = append(keyboard, tgbotapi.NewInlineKeyboardRow(btn))
 		}
 
-		msg := tgbotapi.NewMessage(chatID, "Teams in this group:\n"+response)
-		msg.ParseMode = tgbotapi.ModeMarkdownV2
-		if _, err := bot.Send(msg); err != nil {
-			fmt.Printf("Failed to send list_teams msg: %v\n", err)
-		}
+		msg := tgbotapi.NewMessage(chatID, "Select a team to view its members:")
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+		bot.Send(msg)
 
 	case strings.HasPrefix(callbackData, "delete_team:"):
 		teamName := strings.TrimPrefix(callbackData, "delete_team:")
@@ -235,6 +234,95 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 			bot.Send(tgbotapi.NewMessage(chatID, "Failed to leave team."))
 		} else {
 			bot.Send(tgbotapi.NewMessage(chatID, "You have left "+teamName+"."))
+		}
+
+	case strings.HasPrefix(callbackData, "view_team:"):
+		// Format: view_team:teamName:pageNumber
+		parts := strings.Split(callbackData, ":")
+		if len(parts) != 3 {
+			return
+		}
+
+		teamName := parts[1]
+		pageStr := parts[2]
+		page, err := strconv.Atoi(pageStr)
+		if err != nil || page < 1 {
+			page = 1
+		}
+
+		team, err := ds.GetTeam(chatID, teamName)
+		if err != nil || team == nil {
+			bot.Send(tgbotapi.NewMessage(chatID, "Team not found."))
+			return
+		}
+
+		if len(team.Members) == 0 {
+			bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("Team '%s' has no members.", team.TeamName)))
+			return
+		}
+
+		groupMembers, err := ds.GetGroupMembers(chatID)
+		if err != nil {
+			bot.Send(tgbotapi.NewMessage(chatID, "Error retrieving member information."))
+			return
+		}
+
+		// Pagination logic (10 items per page)
+		perPage := 10
+		totalMembers := len(team.Members)
+		totalPages := (totalMembers + perPage - 1) / perPage
+
+		if page > totalPages {
+			page = totalPages
+		}
+
+		startIdx := (page - 1) * perPage
+		endIdx := startIdx + perPage
+		if endIdx > totalMembers {
+			endIdx = totalMembers
+		}
+
+		paginatedMembers := team.Members[startIdx:endIdx]
+
+		var response string
+		response += fmt.Sprintf("Members of *%s* \\(Page %d/%d\\):\n\n", utils.EscapeMarkdownV2(team.TeamName), page, totalPages)
+
+		for _, memberID := range paginatedMembers {
+			if member, exists := groupMembers[memberID]; exists {
+				var name string
+				if member.Username != "" {
+					name = "@" + utils.EscapeMarkdownV2(member.Username)
+				} else {
+					name = fmt.Sprintf("[%s](tg://user?id=%d)", utils.EscapeMarkdownV2(member.FirstName), member.ID)
+				}
+				response += fmt.Sprintf("\\- %s\n", name)
+			} else {
+				response += fmt.Sprintf("\\- Unknown User \\(%d\\)\n", memberID)
+			}
+		}
+
+		// Edit the existing message with the new list
+		editMsg := tgbotapi.NewEditMessageText(chatID, query.Message.MessageID, response)
+		editMsg.ParseMode = tgbotapi.ModeMarkdownV2
+
+		// Add navigation buttons if necessary
+		var navRow []tgbotapi.InlineKeyboardButton
+		if page > 1 {
+			prevBtn := tgbotapi.NewInlineKeyboardButtonData("⬅️ Prev", fmt.Sprintf("view_team:%s:%d", team.TeamName, page-1))
+			navRow = append(navRow, prevBtn)
+		}
+		if page < totalPages {
+			nextBtn := tgbotapi.NewInlineKeyboardButtonData("Next ➡️", fmt.Sprintf("view_team:%s:%d", team.TeamName, page+1))
+			navRow = append(navRow, nextBtn)
+		}
+
+		if len(navRow) > 0 {
+			markup := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(navRow...))
+			editMsg.ReplyMarkup = &markup
+		}
+
+		if _, err := bot.Send(editMsg); err != nil {
+			fmt.Printf("Failed to send paginated team view: %v\n", err)
 		}
 	}
 }
