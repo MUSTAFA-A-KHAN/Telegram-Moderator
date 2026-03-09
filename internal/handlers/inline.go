@@ -49,9 +49,14 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 			}
 		}
 
-		// Only propose to create a team if the name is valid (>= 3 chars) and an exact match wasn't found
-		if len(teamName) >= 3 && !exactMatchFound {
-			createBtn := tgbotapi.NewInlineQueryResultArticle(query.ID, "Create & Share Team: "+teamName, fmt.Sprintf("Join the *%s* team\\!", utils.EscapeMarkdownV2(teamName)))
+		// Always offer a "Share Join Button" option so creators can invite more members later
+		if len(teamName) >= 3 {
+			title := "Create & Share Team: " + teamName
+			if exactMatchFound {
+				title = "Share Join Button: " + teamName
+			}
+
+			createBtn := tgbotapi.NewInlineQueryResultArticle(query.ID+"_join", title, fmt.Sprintf("Join the *%s* team\\!", utils.EscapeMarkdownV2(teamName)))
 			createBtn.Description = "Send a button to let people join " + teamName
 
 			// Setup the inline keyboard that will be attached to the message
@@ -65,7 +70,8 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 				ParseMode: tgbotapi.ModeMarkdownV2,
 			}
 
-			results = append(results, createBtn)
+			// Prepend the join button to the results so it's easy to see
+			results = append([]interface{}{createBtn}, results...)
 		}
 	}
 
