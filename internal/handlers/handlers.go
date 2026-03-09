@@ -200,12 +200,15 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi
 
 		var response string
 		for _, team := range teams {
-			response += fmt.Sprintf("- *%s* (%d members)\n", utils.EscapeMarkdownV2(team.TeamName), len(team.Members))
+			// In MarkdownV2, hyphen, parens, etc. must be escaped
+			response += fmt.Sprintf("\\- *%s* \\(%d members\\)\n", utils.EscapeMarkdownV2(team.TeamName), len(team.Members))
 		}
 
 		msg := tgbotapi.NewMessage(chatID, "Teams in this group:\n"+response)
 		msg.ParseMode = tgbotapi.ModeMarkdownV2
-		bot.Send(msg)
+		if _, err := bot.Send(msg); err != nil {
+			fmt.Printf("Failed to send list_teams msg: %v\n", err)
+		}
 
 	case strings.HasPrefix(callbackData, "delete_team:"):
 		teamName := strings.TrimPrefix(callbackData, "delete_team:")
