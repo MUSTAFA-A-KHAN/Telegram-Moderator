@@ -26,24 +26,31 @@ func HandleInlineQuery(bot *tgbotapi.BotAPI, ds *db.DataStore, query *tgbotapi.I
 
 	var results []interface{}
 
+	teams, _ := ds.GetTeams(creatorID)
+
 	if text == "" {
 		// Just show their existing teams they created
-		teams, _ := ds.GetTeams(creatorID)
 		for _, t := range teams {
 			resList := buildSendTagsResult(ds, creatorID, t)
 			results = append(results, resList...)
 		}
 	} else {
-		// Search for a team or propose to create one
+		// Search for existing teams matching the prefix
 		teamName := strings.Split(text, " ")[0]
-		team, _ := ds.GetTeam(creatorID, teamName)
+		exactMatchFound := false
 
-		if team != nil {
-			// Found the team, allow them to send the tags
-			resList := buildSendTagsResult(ds, creatorID, *team)
-			results = append(results, resList...)
-		} else {
-			// Not found, allow them to create a shareable Join button
+		for _, t := range teams {
+			if strings.HasPrefix(strings.ToLower(t.TeamName), strings.ToLower(teamName)) {
+				if strings.ToLower(t.TeamName) == strings.ToLower(teamName) {
+					exactMatchFound = true
+				}
+				resList := buildSendTagsResult(ds, creatorID, t)
+				results = append(results, resList...)
+			}
+		}
+
+		// Only propose to create a team if the name is valid (>= 3 chars) and an exact match wasn't found
+		if len(teamName) >= 3 && !exactMatchFound {
 			createBtn := tgbotapi.NewInlineQueryResultArticle(query.ID, "Create & Share Team: "+teamName, fmt.Sprintf("Join the *%s* team\\!", utils.EscapeMarkdownV2(teamName)))
 			createBtn.Description = "Send a button to let people join " + teamName
 
