@@ -160,7 +160,16 @@ func main() {
 
 		// Handle callback queries (button clicks)
 		if update.CallbackQuery != nil {
-			handlers.HandleCallbackQuery(bot, dataStore, update.CallbackQuery, userStates)
+			if update.CallbackQuery.InlineMessageID != "" {
+				handlers.HandleInlineCallbackQuery(bot, dataStore, update.CallbackQuery)
+			} else {
+				handlers.HandleCallbackQuery(bot, dataStore, update.CallbackQuery, userStates)
+			}
+		}
+
+		// Handle inline queries
+		if update.InlineQuery != nil {
+			handlers.HandleInlineQuery(bot, dataStore, update.InlineQuery)
 		}
 	}
 }
