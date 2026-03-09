@@ -8,6 +8,10 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
+
+	"telegram-team-bot/internal/db"
+	"telegram-team-bot/internal/handlers"
+	"telegram-team-bot/internal/models"
 )
 
 func main() {
@@ -18,18 +22,18 @@ func main() {
 	}
 
 	// Initialize MongoDB
-	err = InitMongoDB()
+	err = db.InitMongoDB()
 	if err != nil {
 		log.Fatalf("Database initialization failed: %v", err)
 	}
 	defer func() {
-		if err := mongoClient.Disconnect(nil); err != nil {
+		if err := db.Disconnect(); err != nil {
 			log.Fatalf("Error disconnecting from MongoDB: %v", err)
 		}
 	}()
 
-	db := GetDB()
-	dataStore := NewDataStore(db)
+	database := db.GetDB()
+	dataStore := db.NewDataStore(database)
 
 	err = dataStore.EnsureIndexes()
 	if err != nil {
@@ -63,7 +67,7 @@ func main() {
 		if update.Message != nil {
 			// Track user who sent the message
 			if update.Message.Chat.IsGroup() || update.Message.Chat.IsSuperGroup() {
-				user := User{
+				user := models.User{
 					ID:        update.Message.From.ID,
 					Username:  update.Message.From.UserName,
 					FirstName: update.Message.From.FirstName,
@@ -76,7 +80,7 @@ func main() {
 				// Also track users joining the chat
 				if len(update.Message.NewChatMembers) > 0 {
 					for _, newMember := range update.Message.NewChatMembers {
-						nu := User{
+						nu := models.User{
 							ID:        newMember.ID,
 							Username:  newMember.UserName,
 							FirstName: newMember.FirstName,
@@ -108,7 +112,7 @@ func main() {
 					continue
 				}
 
-				handleCommand(bot, dataStore, update.Message)
+				handlers.HandleCommand(bot, dataStore, update.Message)
 				continue
 			}
 
@@ -142,9 +146,7 @@ func main() {
 
 		// Handle callback queries (button clicks)
 		if update.CallbackQuery != nil {
-			handleCallbackQuery(bot, dataStore, update.CallbackQuery, userStates)
+			handlers.HandleCallbackQuery(bot, dataStore, update.CallbackQuery, userStates)
 		}
 	}
 }
-
-// Helper functions are located in their respective files.

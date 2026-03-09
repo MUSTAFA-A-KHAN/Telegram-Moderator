@@ -1,33 +1,61 @@
-package main
+package db
 
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"strings"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"telegram-team-bot/internal/models"
 )
 
-// User represents a Telegram user inside a group
-type User struct {
-	ID        int64  `bson:"_id"` // Telegram User ID
-	Username  string `bson:"username"`
-	FirstName string `bson:"first_name"`
+var (
+	mongoClient *mongo.Client
+	dbName      = "telegram_team_bot"
+)
+
+// InitMongoDB initializes the connection to MongoDB
+func InitMongoDB() error {
+	uri := os.Getenv("MONGO_URI")
+	if uri == "" {
+		return fmt.Errorf("MONGO_URI environment variable is not set")
+	}
+
+	clientOptions := options.Client().ApplyURI(uri)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		return fmt.Errorf("failed to connect to MongoDB: %w", err)
+	}
+
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to ping MongoDB: %w", err)
+	}
+
+	mongoClient = client
+	log.Println("Connected to MongoDB successfully!")
+	return nil
 }
 
-// GroupMembers represents all tracked users in a specific group
-type GroupMembers struct {
-	ChatID  int64          `bson:"_id"` // Telegram Chat ID
-	Members map[int64]User `bson:"members"`
+// GetDB returns the database instance
+func GetDB() *mongo.Database {
+	return mongoClient.Database(dbName)
 }
 
-// Team represents a sub-group (team) within a main chat
-type Team struct {
-	ChatID   int64   `bson:"chat_id"`
-	TeamName string  `bson:"team_name"`
-	Members  []int64 `bson:"members"` // List of User IDs
+// Disconnect cleans up the MongoDB connection
+func Disconnect() error {
+	if mongoClient != nil {
+		return mongoClient.Disconnect(context.Background())
+	}
+	return nil
 }
 
 // DataStore handles database operations
@@ -35,6 +63,7 @@ type DataStore struct {
 	db *mongo.Database
 }
 
+// NewDataStore creates a new DataStore
 func NewDataStore(db *mongo.Database) *DataStore {
 	return &DataStore{db: db}
 }
@@ -43,7 +72,6 @@ func NewDataStore(db *mongo.Database) *DataStore {
 func (ds *DataStore) EnsureIndexes() error {
 	ctx := context.Background()
 
-	// Ensure unique index on Teams by chat_id and team_name
 	teamsColl := ds.db.Collection("teams")
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{
@@ -57,11 +85,10 @@ func (ds *DataStore) EnsureIndexes() error {
 }
 
 // TrackUser adds or updates a user in the group's tracked members list
-func (ds *DataStore) TrackUser(chatID int64, user User) error {
+func (ds *DataStore) TrackUser(chatID int64, user models.User) error {
 	ctx := context.Background()
 	coll := ds.db.Collection("group_members")
 
-	// Update the specific user within the members map for the chat
 	filter := bson.M{"_id": chatID}
 	update := bson.M{
 		"$set": bson.M{
@@ -75,21 +102,21 @@ func (ds *DataStore) TrackUser(chatID int64, user User) error {
 }
 
 // GetGroupMembers retrieves all tracked members for a group
-func (ds *DataStore) GetGroupMembers(chatID int64) (map[int64]User, error) {
+func (ds *DataStore) GetGroupMembers(chatID int64) (map[int64]models.User, error) {
 	ctx := context.Background()
 	coll := ds.db.Collection("group_members")
 
-	var group GroupMembers
+	var group models.GroupMembers
 	err := coll.FindOne(ctx, bson.M{"_id": chatID}).Decode(&group)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return make(map[int64]User), nil
+			return make(map[int64]models.User), nil
 		}
 		return nil, err
 	}
 
 	if group.Members == nil {
-		return make(map[int64]User), nil
+		return make(map[int64]models.User), nil
 	}
 	return group.Members, nil
 }
@@ -101,7 +128,7 @@ func (ds *DataStore) CreateTeam(chatID int64, teamName string) error {
 
 	teamNameLower := strings.ToLower(teamName)
 
-	team := Team{
+	team := models.Team{
 		ChatID:   chatID,
 		TeamName: teamNameLower,
 		Members:  []int64{},
@@ -123,7 +150,7 @@ func (ds *DataStore) DeleteTeam(chatID int64, teamName string) error {
 }
 
 // GetTeams retrieves all teams for a chat
-func (ds *DataStore) GetTeams(chatID int64) ([]Team, error) {
+func (ds *DataStore) GetTeams(chatID int64) ([]models.Team, error) {
 	ctx := context.Background()
 	coll := ds.db.Collection("teams")
 
@@ -133,7 +160,7 @@ func (ds *DataStore) GetTeams(chatID int64) ([]Team, error) {
 	}
 	defer cursor.Close(ctx)
 
-	var teams []Team
+	var teams []models.Team
 	if err := cursor.All(ctx, &teams); err != nil {
 		return nil, err
 	}
@@ -141,13 +168,13 @@ func (ds *DataStore) GetTeams(chatID int64) ([]Team, error) {
 }
 
 // GetTeam retrieves a specific team in a chat
-func (ds *DataStore) GetTeam(chatID int64, teamName string) (*Team, error) {
+func (ds *DataStore) GetTeam(chatID int64, teamName string) (*models.Team, error) {
 	ctx := context.Background()
 	coll := ds.db.Collection("teams")
 
 	teamNameLower := strings.ToLower(teamName)
 
-	var team Team
+	var team models.Team
 	err := coll.FindOne(ctx, bson.M{"chat_id": chatID, "team_name": teamNameLower}).Decode(&team)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
